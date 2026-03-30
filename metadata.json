@@ -1,0 +1,5 @@
+{
+  "name": "CalcDrink",
+  "description": "An application for cocktail bars to manage ingredients, drink recipes, and simulate event costs, including operational expenses and profit margins, to determine the final price to charge.",
+  "requestFramePermissions": []
+}
