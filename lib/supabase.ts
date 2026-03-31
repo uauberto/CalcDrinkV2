@@ -6,13 +6,14 @@ import type { Company, Ingredient, Drink, Event, StaffMember, DrinkIngredient } 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const SETUP_SQL = `
--- COPIE E RODE ISSO NO SQL EDITOR DO SUPABASE --
+-- COPIE E RODE ISSO NO SQL EDITOR DO SUPABASE PARA ATUALIZAR SEGURANÇA --
 
 create extension if not exists "pgcrypto";
 
--- 1. Tabela de Empresas
+-- 1. Criação/Atualização da Tabela de Empresas
 create table if not exists companies (
   id uuid default gen_random_uuid() primary key,
+  auth_user_id uuid references auth.users(id) on delete restrict,
   name text not null,
   status text default 'pending_approval',
   plan text,
@@ -27,7 +28,7 @@ create table if not exists companies (
   password text
 );
 
-alter table companies add column if not exists password text;
+alter table companies add column if not exists auth_user_id uuid references auth.users(id) on delete restrict;
 alter table companies drop constraint if exists companies_document_key;
 alter table companies add constraint companies_document_key unique (document);
 alter table companies drop constraint if exists companies_email_key;
@@ -65,7 +66,7 @@ create table if not exists drinks (
   created_at timestamp with time zone default now()
 );
 
--- 5. Ingredientes do Drink (Relacionamento)
+-- 5. Ingredientes do Drink
 create table if not exists drink_ingredients (
   id uuid default gen_random_uuid() primary key,
   drink_id uuid references drinks(id) on delete cascade not null,
@@ -83,18 +84,16 @@ create table if not exists events (
   status text default 'planned',
   num_adults numeric default 0,
   num_children numeric default 0,
-  simulated_final_price numeric, -- Armazena o valor orçado
+  simulated_final_price numeric,
   created_at timestamp with time zone default now()
 );
 
--- 7. Drinks do Evento
 create table if not exists event_drinks (
   event_id uuid references events(id) on delete cascade not null,
   drink_id uuid references drinks(id) on delete cascade not null,
   primary key (event_id, drink_id)
 );
 
--- 8. Equipe do Evento
 create table if not exists event_staff (
   id uuid default gen_random_uuid() primary key,
   event_id uuid references events(id) on delete cascade not null,
@@ -102,15 +101,114 @@ create table if not exists event_staff (
   cost numeric not null
 );
 
--- Índices de Performance
+-- Índices
 create index if not exists idx_ingredients_company on ingredients(company_id);
 create index if not exists idx_drinks_company on drinks(company_id);
 create index if not exists idx_events_company on events(company_id);
 
--- 9. Inserir Usuário Administrador Master Padrão
-insert into companies (name, email, document, password, status, role, type, responsible_name)
-values ('Administrador Master', '${MASTER_EMAIL}', '00.000.000/0000-00', 'admin', 'active', 'master', 'PJ', 'Admin')
-on conflict (email) do nothing;
+-- --------------------------------------------------------------------------
+-- 🛡️ ATIVAÇÃO DO RLS (ROW LEVEL SECURITY) 🛡️
+-- --------------------------------------------------------------------------
+alter table companies enable row level security;
+alter table ingredients enable row level security;
+alter table stock_entries enable row level security;
+alter table drinks enable row level security;
+alter table drink_ingredients enable row level security;
+alter table events enable row level security;
+alter table event_drinks enable row level security;
+alter table event_staff enable row level security;
+
+-- Limpar policies antigas se existirem
+drop policy if exists "Companies policy" on companies;
+drop policy if exists "Ingredients policy" on ingredients;
+drop policy if exists "Drinks policy" on drinks;
+drop policy if exists "Events policy" on events;
+drop policy if exists "Companies insert access" on companies;
+
+-- Companies: Insert livre para Auth Users (pois primeiro criam a conta, depois chamam o Insert via código)
+create policy "Companies insert access" on companies for insert with check (
+  auth_user_id = auth.uid() OR auth_user_id IS NULL
+);
+-- Companies: Update/Select limitados à própria empresa ou Master
+create policy "Companies read access" on companies for select using (
+  auth_user_id = auth.uid() or role = 'master'
+);
+create policy "Companies update access" on companies for update using (
+  auth_user_id = auth.uid() or role = 'master'
+);
+
+-- Políticas Cascata (Só vejo o que for da minha companhia)
+create policy "Ingredients policy" on ingredients for all using (
+  company_id in (select id from companies where auth_user_id = auth.uid() or role = 'master')
+);
+create policy "Stock entries policy" on stock_entries for all using (
+  ingredient_id in (select id from ingredients where company_id in (select id from companies where auth_user_id = auth.uid() or role = 'master'))
+);
+
+create policy "Drinks policy" on drinks for all using (
+  company_id in (select id from companies where auth_user_id = auth.uid() or role = 'master')
+);
+create policy "Drink ingredients policy" on drink_ingredients for all using (
+  drink_id in (select id from drinks where company_id in (select id from companies where auth_user_id = auth.uid() or role = 'master'))
+);
+
+create policy "Events policy" on events for all using (
+  company_id in (select id from companies where auth_user_id = auth.uid() or role = 'master')
+);
+create policy "Event drinks policy" on event_drinks for all using (
+  event_id in (select id from events where company_id in (select id from companies where auth_user_id = auth.uid() or role = 'master'))
+);
+create policy "Event staff policy" on event_staff for all using (
+  event_id in (select id from events where company_id in (select id from companies where auth_user_id = auth.uid() or role = 'master'))
+);
+
+-- --------------------------------------------------------------------------
+-- 🔄 LIGAÇÕES DE MIGRAÇÃO LAZY (FUNÇÕES NO BANCO)
+-- --------------------------------------------------------------------------
+
+-- 1. Verifica se a senha antiga não-criptografada bate para migrá-la:
+create or replace function check_legacy_login(p_email text, p_document text, p_password text)
+returns uuid security definer as $$
+declare
+  v_id uuid;
+  v_pass text;
+begin
+  select id, password into v_id, v_pass from companies 
+  where email ILIKE p_email and document = p_document and auth_user_id is null;
+  
+  if v_id is not null and v_pass = p_password then
+    return v_id;
+  end if;
+  return null;
+end;
+$$ language plpgsql;
+
+-- 2. Conecta a velha conta com o novo ID de login do Supabase Auth e apaga a senha velha:
+create or replace function link_auth_user(p_company_id uuid)
+returns void security definer as $$
+begin
+  update companies set auth_user_id = auth.uid(), password = null where id = p_company_id;
+end;
+$$ language plpgsql;
+
+-- --------------------------------------------------------------------------
+-- 🛡️ MASTER ADMIN TRIGGER
+-- --------------------------------------------------------------------------
+-- (Garante que o email Master receba prioridade sempre que for inserido)
+CREATE OR REPLACE FUNCTION set_master_role() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.email = '${MASTER_EMAIL}' THEN
+    NEW.role := 'master';
+    NEW.status := 'active';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_master_role ON companies;
+CREATE TRIGGER trigger_master_role
+BEFORE INSERT ON companies
+FOR EACH ROW EXECUTE PROCEDURE set_master_role();
 `;
 
 const handleDatabaseError = (error: any, context: string) => {
@@ -123,7 +221,6 @@ const handleDatabaseError = (error: any, context: string) => {
 
     console.error(`Erro em ${context}:`, errorMsg);
     
-    // Detecta erros de tabela inexistente (PGRST205, 42P01) ou coluna inexistente (PGRST204)
     if (error?.code === 'PGRST205' || error?.code === '42P01' || error?.code === 'PGRST204') {
         console.group("🚨 BANCO DE DADOS NÃO CONFIGURADO 🚨");
         console.error("As tabelas ou colunas necessárias não foram encontradas no Supabase.");
@@ -139,44 +236,106 @@ export const api = {
   auth: {
     login: async (document: string, email: string, password?: string): Promise<Company | null> => {
       try {
-        const { data, error } = await supabase
+        if (!password) throw new Error("Senha obrigatória");
+        
+        let finalAuthUserId = null;
+
+        // 1. Tentar login oficial e seguro
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password: password
+        });
+
+        if (authError) {
+             // 2. LAZY MIGRATION: Se falhar no Auth, pode ser usuário legado que a senha ta crua na tabela
+             const { data: legacyId, error: rpcError } = await supabase.rpc('check_legacy_login', {
+                 p_email: email.trim(),
+                 p_document: document,
+                 p_password: password
+             });
+
+             if (legacyId) {
+                  // É conta antiga válida! Migrar agora:
+                  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                      email: email.trim(),
+                      password: password
+                  });
+
+                  if (signUpError) throw new Error('Falha ao migrar camada de segurança: ' + signUpError.message);
+                  
+                  // Fizeram signIn instantaneo, linkamos!
+                  await supabase.rpc('link_auth_user', { p_company_id: legacyId });
+                  finalAuthUserId = signUpData.user?.id;
+             } else {
+                 if (authError.message.includes('Invalid login credentials')) {
+                    throw new Error("Senha ou credenciais incorretas.");
+                 }
+                 if (authError.message.includes('Email not confirmed')) {
+                     throw new Error("E-mail aguardando confirmação. Verifique sua caixa de entrada.");
+                 }
+                 throw authError;
+             }
+        } else {
+            finalAuthUserId = authData.user?.id;
+        }
+
+        if (!finalAuthUserId) return null;
+
+        // 3. Com a sessão Auth Ativa (Passou no RLS), ler os dados da Empresa
+        const { data: company, error: fetchError } = await supabase
           .from('companies')
           .select('*')
+          .eq('auth_user_id', finalAuthUserId)
           .eq('document', document)
-          .ilike('email', email.trim())
           .maybeSingle(); 
 
-        if (error) throw error;
-        if (!data) return null;
-
-        if (data.password && password) {
-            if (data.password !== password) {
-                throw new Error("Senha incorreta.");
-            }
+        if (fetchError) throw fetchError;
+        if (!company) {
+            await supabase.auth.signOut();
+            throw new Error("CNPJ/CPF não corresponde ao email informado.");
         }
-        return mapDatabaseToCompany(data);
+
+        return mapDatabaseToCompany(company);
       } catch (error: any) {
-        if (error.message === "Senha incorreta.") {
+        if (error.message.includes("incorretas") || error.message.includes("corresponde") || error.message.includes("confirmação") || error.message.includes("segurança")) {
             throw error;
         }
         const isSetupError = handleDatabaseError(error, 'Login');
         if (isSetupError) throw new Error("TABELAS_NAO_ENCONTRADAS");
-        return null;
+        throw new Error(error.message || "Erro desconhecido.");
       }
     },
 
     register: async (company: Company, password?: string): Promise<Company | null> => {
+      if (!password) throw new Error("A senha é obrigatória na versão segura.");
       try {
-        const dbPayload = mapCompanyToDatabase(company);
-        if (password) dbPayload.password = password;
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+            email: company.email,
+            password: password
+        });
 
+        if (authError) throw new Error(authError.message); 
+        
+        const dbPayload = mapCompanyToDatabase(company);
+        dbPayload.auth_user_id = authData.user?.id;
+        delete dbPayload.password; 
+
+        // O RLS (for insert) garante permissão se `auth.uid()` bater com o `auth_user_id` inserido
         const { data, error } = await supabase.from('companies').insert(dbPayload).select().single();
-        if (error) throw error;
+        
+        if (error) {
+            console.error(error);
+            // Em caso de duplicidade de CNPJ/CPF da erro Unique Key
+            throw new Error("Erro no banco de dados. O Documento já pode estar em uso.");
+        }
         return mapDatabaseToCompany(data);
       } catch (error: any) {
+        if (error.message.includes("already registered")) {
+             throw new Error("Este E-mail já possui cadastro no sistema de segurança.");
+        }
         const isSetupError = handleDatabaseError(error, 'Registro');
         if (isSetupError) throw new Error("TABELAS_NAO_ENCONTRADAS");
-        return null;
+        throw error;
       }
     },
     
@@ -191,6 +350,10 @@ export const api = {
             handleDatabaseError(error, 'Atualizar Empresa');
             return false;
         }
+    },
+
+    logout: async () => {
+         await supabase.auth.signOut();
     }
   },
 
@@ -198,8 +361,7 @@ export const api = {
       list: async (companyId: string): Promise<Ingredient[]> => {
           const { data, error } = await supabase
             .from('ingredients')
-            .select('*, stock_entries(*)')
-            .eq('company_id', companyId);
+            .select('*, stock_entries(*)');
           
           if (error) { handleDatabaseError(error, 'Listar Insumos'); return []; }
           return data.map(mapDatabaseToIngredient);
@@ -250,11 +412,9 @@ export const api = {
 
   drinks: {
       list: async (companyId: string): Promise<Drink[]> => {
-          // Busca drinks e seus ingredientes
           const { data, error } = await supabase
             .from('drinks')
-            .select('*, drink_ingredients(*)')
-            .eq('company_id', companyId);
+            .select('*, drink_ingredients(*)');
             
           if (error) { handleDatabaseError(error, 'Listar Drinks'); return []; }
           
@@ -271,7 +431,6 @@ export const api = {
 
       save: async (companyId: string, drink: Drink): Promise<boolean> => {
           try {
-              // 1. Salva o Drink
               const { error: drinkError } = await supabase.from('drinks').upsert({
                   id: drink.id,
                   company_id: companyId,
@@ -281,10 +440,8 @@ export const api = {
               });
               if (drinkError) throw drinkError;
 
-              // 2. Limpa ingredientes antigos (simples estratégia de substituição)
               await supabase.from('drink_ingredients').delete().eq('drink_id', drink.id);
 
-              // 3. Insere novos ingredientes
               if (drink.ingredients.length > 0) {
                   const { error: ingError } = await supabase.from('drink_ingredients').insert(
                       drink.ingredients.map(di => ({
@@ -310,11 +467,9 @@ export const api = {
 
   events: {
       list: async (companyId: string): Promise<Event[]> => {
-          // Busca eventos com staff e drinks selecionados
           const { data, error } = await supabase
             .from('events')
-            .select('*, event_staff(*), event_drinks(*)')
-            .eq('company_id', companyId);
+            .select('*, event_staff(*), event_drinks(*)');
 
           if (error) { handleDatabaseError(error, 'Listar Eventos'); return []; }
 
@@ -338,7 +493,6 @@ export const api = {
 
       save: async (companyId: string, event: Event): Promise<boolean> => {
           try {
-            // 1. Salva Evento
             const { error: eventError } = await supabase.from('events').upsert({
                 id: event.id,
                 company_id: companyId,
@@ -352,7 +506,6 @@ export const api = {
             });
             if (eventError) throw eventError;
 
-            // 2. Salva Relacionamento de Drinks (Delete/Insert)
             await supabase.from('event_drinks').delete().eq('event_id', event.id);
             if (event.selectedDrinks.length > 0) {
                 await supabase.from('event_drinks').insert(
@@ -363,7 +516,6 @@ export const api = {
                 );
             }
 
-            // 3. Salva Staff
             await supabase.from('event_staff').delete().eq('event_id', event.id);
             if (event.staff && event.staff.length > 0) {
                 await supabase.from('event_staff').insert(
@@ -388,37 +540,8 @@ export const api = {
   },
 
   admin: {
-      initMasterUser: async (): Promise<void> => {
-          try {
-              // Verifica se o usuário master já existe
-              const { data, error } = await supabase
-                  .from('companies')
-                  .select('id')
-                  .eq('email', MASTER_EMAIL)
-                  .maybeSingle();
-              
-              if (error) throw error;
-              
-              // Se não existe, cria
-              if (!data) {
-                  const { error: insertError } = await supabase.from('companies').insert({
-                      name: 'Administrador Master',
-                      email: MASTER_EMAIL,
-                      document: '00.000.000/0000-00',
-                      password: 'admin', // Senha padrão simples, o usuário deve trocar depois
-                      status: 'active',
-                      role: 'master',
-                      type: 'PJ',
-                      responsible_name: 'Admin'
-                  });
-                  if (insertError) throw insertError;
-                  console.log("Usuário Master criado com sucesso.");
-              }
-          } catch (error: any) {
-              console.error("Erro ao inicializar usuário master:", error);
-          }
-      },
       listAllCompanies: async (): Promise<Company[]> => {
+          // O usuário "master" por RLS consegue puxar tudo. 
           const { data, error } = await supabase.from('companies').select('*').order('created_at', { ascending: false });
           if (error) { handleDatabaseError(error, 'Admin List'); return []; }
           return data.map(mapDatabaseToCompany);
@@ -432,22 +555,21 @@ export const api = {
           const { error } = await supabase.from('companies').update({ role: role }).eq('id', id);
           if (error) handleDatabaseError(error, 'Admin Update Role');
           return !error;
-      },
-      resetUserPassword: async (id: string, newPassword: string): Promise<boolean> => {
-          const { error } = await supabase.from('companies').update({ password: newPassword }).eq('id', id);
-          if (error) handleDatabaseError(error, 'Admin Reset Password');
-          return !error;
       }
+      // Note: resetUserPassword is removed. Master cannot reset users plaintext password manually anymore via RLS.
+      // E-mail password recovery flow from Auth should be used.
   }
 };
 
 function mapDatabaseToCompany(db: any): Company {
     return {
-        id: db.id, name: db.name, createdAt: db.created_at, status: db.status, plan: db.plan, nextBillingDate: db.next_billing_date, type: db.type || 'PJ', document: db.document || '', email: db.email || '', phone: db.phone || '', responsibleName: db.responsible_name || '', role: db.role || 'admin'
+        id: db.id, name: db.name, createdAt: db.created_at, status: db.status, plan: db.plan, nextBillingDate: db.next_billing_date, type: db.type || 'PJ', document: db.document || '', email: db.email || '', phone: db.phone || '', responsibleName: db.responsible_name || '', role: db.role || 'admin',
+        auth_user_id: db.auth_user_id
     };
 }
 function mapCompanyToDatabase(app: Company): any {
     return {
+        // We do not overwrite ID to preserve UUID logic
         id: app.id, name: app.name, status: app.status, plan: app.plan, next_billing_date: app.nextBillingDate, type: app.type, document: app.document, email: app.email, phone: app.phone, responsible_name: app.responsibleName, role: app.role
     };
 }

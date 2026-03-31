@@ -207,7 +207,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               setLoginError("Senha incorreta.");
           } else {
               console.error("Login error:", error);
-              setLoginError("Erro ao tentar fazer login. Verifique sua conexão.");
+              setLoginError(error.message || "Erro de conexão genérico.");
           }
       }
       setIsLoading(false);
