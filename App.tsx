@@ -39,7 +39,7 @@ const AppLogic: React.FC = () => {
         nextBillingDate: company.nextBillingDate || null
     };
     
-    if (normalizedCompany.email !== MASTER_EMAIL && normalizedCompany.status === 'active' && normalizedCompany.nextBillingDate) {
+    if (normalizedCompany.role !== 'master' && normalizedCompany.email !== MASTER_EMAIL && normalizedCompany.status === 'active' && normalizedCompany.nextBillingDate) {
         const now = new Date();
         const billingDate = new Date(normalizedCompany.nextBillingDate);
         now.setHours(0,0,0,0);
@@ -51,7 +51,7 @@ const AppLogic: React.FC = () => {
 
     updateCompanyState(normalizedCompany);
     
-    if (normalizedCompany.email === MASTER_EMAIL) {
+    if (normalizedCompany.role === 'master' || normalizedCompany.email === MASTER_EMAIL) {
        navigate('/admin');
     } else if (normalizedCompany.status === 'pending_approval') {
        navigate('/pending');
@@ -116,7 +116,7 @@ const AppLogic: React.FC = () => {
                     key={currentCompany?.id} 
                     company={currentCompany!} 
                     onLogout={handleLogout}
-                    isMasterAdmin={currentCompany?.email === MASTER_EMAIL}
+                    isMasterAdmin={currentCompany?.role === 'master' || currentCompany?.email === MASTER_EMAIL}
                     onSwitchToAdmin={() => { setMasterView('admin'); navigate('/admin'); }}
                 />
            </ProtectedRoute>

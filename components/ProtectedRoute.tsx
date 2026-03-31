@@ -1,3 +1,4 @@
+import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import type { Company } from '../types.ts';
 import { MASTER_EMAIL } from '../config.ts';
@@ -15,7 +16,7 @@ export const ProtectedRoute = ({ company, children, requireMaster = false }: Pro
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  const isMaster = company.email === MASTER_EMAIL;
+  const isMaster = company.role === 'master' || company.email === MASTER_EMAIL;
 
   if (requireMaster && !isMaster) {
      return <Navigate to="/dashboard" replace />;

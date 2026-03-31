@@ -184,6 +184,11 @@ end;
 $$ language plpgsql;
 
 -- 2. Conecta a velha conta com o novo ID de login do Supabase Auth e apaga a senha velha:
+create or replace function link_auth_user_explicit(p_company_id uuid, p_auth_user_id uuid)
+returns void security definer as $
+begin update companies set auth_user_id = p_auth_user_id, password = null where id = p_company_id; end;
+$ language plpgsql;
+
 create or replace function link_auth_user(p_company_id uuid)
 returns void security definer as $$
 begin

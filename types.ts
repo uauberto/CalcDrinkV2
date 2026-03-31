@@ -59,7 +59,7 @@ export interface Event {
 export type CompanyStatus = 'pending_approval' | 'waiting_payment' | 'active' | 'suspended';
 export type PlanType = 'monthly' | 'yearly' | null;
 export type CompanyType = 'PF' | 'PJ';
-export type UserRole = 'admin' | 'manager' | 'bartender';
+export type UserRole = 'master' | 'admin' | 'manager' | 'bartender';
 
 export interface Company {
   id: string;
