@@ -1,15 +1,14 @@
 
 import React from 'react';
 import type { Company } from '../types.ts';
-import { ShieldAlert, CheckCircle } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 
 interface ApprovalPendingProps {
   company: Company;
-  onSimulateApproval: () => void;
   onLogout: () => void;
 }
 
-const ApprovalPending: React.FC<ApprovalPendingProps> = ({ company, onSimulateApproval, onLogout }) => {
+const ApprovalPending: React.FC<ApprovalPendingProps> = ({ company, onLogout }) => {
   return (
     <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
       <div className="max-w-lg w-full bg-gray-800 rounded-xl shadow-2xl border border-gray-700 p-8 text-center">
@@ -35,15 +34,6 @@ const ApprovalPending: React.FC<ApprovalPendingProps> = ({ company, onSimulateAp
         </div>
 
         <div className="space-y-3">
-            {/* Botão de Simulação para o Desenvolvedor */}
-            <button 
-                onClick={onSimulateApproval}
-                className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
-            >
-                <CheckCircle size={20} />
-                (Simulação) Aprovar Cadastro
-            </button>
-
             <button 
                 onClick={onLogout}
                 className="w-full text-gray-400 hover:text-white py-2 transition-colors"

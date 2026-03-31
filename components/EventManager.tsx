@@ -6,6 +6,7 @@ import { generateProposalPDF } from '../utils/pdfGenerator.ts';
 import { useLocalStorage } from '../hooks/useLocalStorage.ts';
 import { api } from '../lib/supabase.ts';
 import { ENABLE_DATABASE } from '../config.ts';
+import { generateId } from '../utils/generateId.ts';
 
 interface EventManagerProps {
   events: Event[];
@@ -36,7 +37,7 @@ const EventManager: React.FC<EventManagerProps> = ({ events, setEvents, drinks, 
        if (endDateTime <= startDateTime) { alert("Data fim deve ser maior que início."); return; }
 
       const event: Event = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: newEvent.name,
         startTime: startDateTime.toISOString(),
         endTime: endDateTime.toISOString(),

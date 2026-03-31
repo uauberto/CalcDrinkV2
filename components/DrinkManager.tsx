@@ -6,6 +6,7 @@ import { useLocalStorage } from '../hooks/useLocalStorage.ts';
 import { api } from '../lib/supabase.ts';
 import { ENABLE_DATABASE } from '../config.ts';
 import Papa from 'papaparse';
+import { generateId } from '../utils/generateId.ts';
 
 interface DrinkManagerProps {
   drinks: Drink[];
@@ -109,7 +110,7 @@ const DrinkManager: React.FC<DrinkManagerProps> = ({ drinks, setDrinks, ingredie
     };
 
     const newDrink: Drink = {
-        id: editingDrink ? editingDrink.id : crypto.randomUUID(),
+        id: editingDrink ? editingDrink.id : generateId(),
         name: drinkName,
         ingredients: recipe.filter(r => r.quantity > 0 && r.ingredientId),
         consumptionEstimate: finalConsumptionEstimate,
@@ -169,7 +170,7 @@ const DrinkManager: React.FC<DrinkManagerProps> = ({ drinks, setDrinks, ingredie
                     if (ingId) {
                         if (!importedMap.has(drinkName)) {
                             importedMap.set(drinkName, {
-                                id: crypto.randomUUID(),
+                                id: generateId(),
                                 name: drinkName,
                                 ingredients: [],
                                 consumptionEstimate: { adults: 0.5, children: 0 }

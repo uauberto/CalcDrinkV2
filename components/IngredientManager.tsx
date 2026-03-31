@@ -6,6 +6,7 @@ import { useLocalStorage } from '../hooks/useLocalStorage.ts';
 import { api } from '../lib/supabase.ts';
 import { ENABLE_DATABASE } from '../config.ts';
 import Papa from 'papaparse';
+import { generateId } from '../utils/generateId.ts';
 
 interface IngredientManagerProps {
   ingredients: Ingredient[];
@@ -40,7 +41,7 @@ const IngredientManager: React.FC<IngredientManagerProps> = ({ ingredients, setI
         updatedList = ingredients.map(ing => ing.id === isEditing ? editedIngredient : ing);
         setIsEditing(null);
       } else {
-        const newItem: Ingredient = { ...newIngredient, id: crypto.randomUUID(), stockEntries: [] };
+        const newItem: Ingredient = { ...newIngredient, id: generateId(), stockEntries: [] };
         // Save to DB
         if (ENABLE_DATABASE) {
              await api.ingredients.save(company.id, newItem);
@@ -101,7 +102,7 @@ const IngredientManager: React.FC<IngredientManagerProps> = ({ ingredients, setI
 
                 if (name && unit) {
                     const newIng: Ingredient = {
-                        id: crypto.randomUUID(),
+                        id: generateId(),
                         name: name,
                         unit: unit.toLowerCase(),
                         isAlcoholic: String(isAlcoholicRaw).toLowerCase().includes('s') || String(isAlcoholicRaw).toLowerCase() === 'true',

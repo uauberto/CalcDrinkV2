@@ -6,6 +6,7 @@ import { useLocalStorage } from '../hooks/useLocalStorage.ts';
 import { api } from '../lib/supabase.ts';
 import { ENABLE_DATABASE } from '../config.ts';
 import Papa from 'papaparse';
+import { generateId } from '../utils/generateId.ts';
 
 interface StockManagerProps {
   ingredients: Ingredient[];
@@ -34,7 +35,7 @@ const StockManager: React.FC<StockManagerProps> = ({ ingredients, setIngredients
     if (!addStockModal || newEntry.quantity <= 0 || newEntry.price <= 0) return;
 
     const newStockEntry: StockEntry = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       date: newEntry.date,
       quantity: newEntry.quantity,
       price: newEntry.price,
@@ -155,7 +156,7 @@ const StockManager: React.FC<StockManagerProps> = ({ ingredients, setIngredients
                     
                     if (ingredient) {
                         const newEntry: StockEntry = {
-                            id: crypto.randomUUID(),
+                            id: generateId(),
                             date: date || new Date().toISOString().split('T')[0],
                             quantity: quantity,
                             price: price,

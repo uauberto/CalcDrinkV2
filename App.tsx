@@ -73,12 +73,7 @@ const App: React.FC = () => {
     setMasterView('admin'); // Reset view on logout
   };
 
-  const handleSimulateApproval = async () => {
-      if (currentCompany) {
-          const updated = { ...currentCompany, status: 'waiting_payment' as const };
-          await updateCompanyState(updated);
-      }
-  };
+
 
   const handleSubscribe = async (plan: 'monthly' | 'yearly') => {
       if (currentCompany) {
@@ -122,7 +117,7 @@ const App: React.FC = () => {
   
   // 1. Pending Approval (Admin check)
   if (!isMaster && currentCompany.status === 'pending_approval') {
-      return <ApprovalPending company={currentCompany} onSimulateApproval={handleSimulateApproval} onLogout={handleLogout} />;
+      return <ApprovalPending company={currentCompany} onLogout={handleLogout} />;
   }
 
   // 2. Waiting Payment or Suspended (Overdue)

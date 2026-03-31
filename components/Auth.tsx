@@ -5,6 +5,7 @@ import { Building2, ArrowRight, User, Briefcase, LogIn, Phone, Mail, FileText, C
 import { useLocalStorage } from '../hooks/useLocalStorage.ts';
 import { api, supabase } from '../lib/supabase.ts';
 import { ENABLE_DATABASE, MASTER_EMAIL } from '../config.ts';
+import { generateId } from '../utils/generateId.ts';
 
 interface AuthProps {
   onLogin: (company: Company) => void;
@@ -121,7 +122,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     // Construct the Company object locally first
     const newCompany: Company = {
-      id: crypto.randomUUID(), 
+      id: generateId(), 
       name: formData.name,
       createdAt: new Date().toISOString(),
       status: 'pending_approval',

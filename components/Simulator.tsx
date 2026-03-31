@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import type { Drink, Ingredient, StaffMember, Event, Company } from '../types.ts';
 import { Plus, Trash2, Users, Target, BarChart2, Save, X, Clock, RotateCcw } from 'lucide-react';
 import { useLocalStorage } from '../hooks/useLocalStorage.ts';
+import { generateId } from '../utils/generateId.ts';
 
 interface SimulatorProps {
   drinks: Drink[];
@@ -91,9 +92,12 @@ const Simulator: React.FC<SimulatorProps> = ({ drinks, ingredients, setEvents, c
   };
 
   const handleAddStaff = () => {
-    if (newStaffMember.role && newStaffMember.cost > 0) {
-      setStaff([...staff, { ...newStaffMember, id: crypto.randomUUID() }]);
+    if (newStaffMember.role.trim() !== '' && newStaffMember.cost >= 0) {
+      
+      setStaff([...staff, { ...newStaffMember, id: generateId() }]);
       setNewStaffMember({ role: '', cost: 0 });
+    } else {
+      alert("Por favor, preencha a função e um custo válido (pode ser 0).");
     }
   };
 
@@ -121,7 +125,7 @@ const Simulator: React.FC<SimulatorProps> = ({ drinks, ingredients, setEvents, c
     }
 
     const newEvent: Event = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: newEventDetails.name,
         startTime: startDateTime.toISOString(),
         endTime: endDateTime.toISOString(),
