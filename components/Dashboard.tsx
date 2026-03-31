@@ -91,6 +91,7 @@ const Dashboard: React.FC<DashboardProps> = ({ company, onLogout, isMasterAdmin,
 
   const getRoleLabel = (role: string) => {
       switch(role) {
+          case 'master': return 'Master (Dono do Sistema)';
           case 'admin': return 'Administrador';
           case 'manager': return 'Gerente';
           case 'bartender': return 'Bartender';

@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import type { Company } from '../types.ts';
-import { api } from '../lib/supabase.ts';
+import { api, supabase } from '../lib/supabase.ts';
+import SystemSettingsTab from './SystemSettingsTab.tsx';
 import { Shield, LogOut, CheckCircle, XCircle, Search, Building2, User, LayoutDashboard, Unlock, KeyRound, X, Mail, Phone, CreditCard, RefreshCw, Copy, Filter, Users, MoreHorizontal } from 'lucide-react';
 
 interface MasterDashboardProps {
@@ -14,6 +15,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
     const [companies, setCompanies] = useState<Company[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [activeTab, setActiveTab] = useState<'companies' | 'settings'>('companies');
     const [filterStatus, setFilterStatus] = useState<'all' | 'pending_approval' | 'active' | 'suspended' | 'waiting_payment'>('all');
     
     // Estado do Modal de Redefinição de Senha
@@ -76,7 +78,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
     };
 
     const handleRoleChange = async (id: string, newRole: string) => {
-        const roleName = newRole === 'admin' ? 'Administrador' : newRole === 'manager' ? 'Gerente' : 'Bartender';
+        const roleName = newRole === 'admin' ? 'Administrador' : newRole === 'manager' ? 'Gerente' : newRole === 'master' ? 'Master Supremo' : 'Bartender';
         
         if (!window.confirm(`Tem certeza que deseja alterar o nível de acesso deste usuário para ${roleName.toUpperCase()}?`)) {
             // Se cancelar, precisamos forçar o re-render para voltar o select ao valor original
@@ -101,21 +103,12 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
     const handleConfirmResetPassword = async () => {
         if (!resetPasswordModal || !manualPassword) return;
         
-        if (manualPassword.length < 4) {
-            alert("A senha deve ter pelo menos 4 caracteres.");
-            return;
-        }
-
-        const success = await api.admin.resetUserPassword(resetPasswordModal.companyId, manualPassword);
+        const { error } = await supabase.auth.resetPasswordForEmail(resetPasswordModal.email, {
+             redirectTo: window.location.origin + '/recovery'
+        });
         
-        if (success) {
-            const subject = encodeURIComponent("Redefinição de Senha - CalculaDrink");
-            const body = encodeURIComponent(`Olá,\n\nSua senha foi redefinida pelo administrador.\n\nNova Senha: ${manualPassword}\n\nAcesse em: https://uauberto.github.io/CalculaDrink/\n\nAtenciosamente,\nEquipe CalculaDrink`);
-            
-            // Pergunta se quer abrir o email
-            if(window.confirm("Senha atualizada com sucesso!\n\nDeseja abrir o cliente de e-mail padrão para enviar a senha ao usuário?")) {
-                 window.open(`mailto:${resetPasswordModal.email}?subject=${subject}&body=${body}`, '_blank');
-            }
+        if (!error) {
+            alert("Um e-mail de redefinição de senha oficial do sistema foi enviado para o usuário.");
             
             setResetPasswordModal(null);
             setManualPassword('');
@@ -245,7 +238,10 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                         </div>
                     </div>
                     
-                    <div className="flex items-center gap-2 sm:gap-4">
+                    <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto w-full sm:w-auto pb-2 sm:pb-0">
+                         <button onClick={() => setActiveTab('companies')} className={`px-4 py-2 text-sm font-bold rounded-lg transition-colors ${activeTab === 'companies' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-800'}`}>Empresas</button>
+                         <button onClick={() => setActiveTab('settings')} className={`px-4 py-2 text-sm font-bold rounded-lg transition-colors ${activeTab === 'settings' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-800'}`}>Configurações</button>
+                         <div className="w-px h-6 bg-gray-700 mx-2 hidden sm:block"></div>
                         <button 
                             onClick={onSwitchToApp} 
                             className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-lg transition-all shadow-lg shadow-orange-900/20 hover:shadow-orange-600/40 text-sm font-bold transform active:scale-95"
@@ -264,6 +260,8 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
             </header>
 
             <main className="container mx-auto p-4 sm:p-6">
+                {activeTab === 'companies' ? (
+                    <>
                 {/* Top Control Bar */}
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-4">
                     <div className="w-full lg:w-auto">
@@ -353,6 +351,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                                                 onChange={(e) => handleRoleChange(company.id, e.target.value)}
                                                 className="w-full bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600 focus:border-orange-500 focus:outline-none"
                                             >
+                                                <option value="master">Admin Master</option>
                                                 <option value="admin">Admin</option>
                                                 <option value="manager">Manager</option>
                                                 <option value="bartender">Bartender</option>
@@ -416,6 +415,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                                                         onChange={(e) => handleRoleChange(company.id, e.target.value)}
                                                         className="bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-orange-500 focus:outline-none"
                                                     >
+                                                        <option value="master">Admin Master</option>
                                                         <option value="admin">Admin</option>
                                                         <option value="manager">Manager</option>
                                                         <option value="bartender">Bartender</option>
@@ -434,6 +434,10 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                             </div>
                         </div>
                     </>
+                )}
+                    </>
+                ) : (
+                    <SystemSettingsTab />
                 )}
             </main>
 
@@ -500,6 +504,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ adminUser, onLogout, 
                                                     onChange={(e) => handleRoleChange(managingUsersCompany.id, e.target.value)}
                                                     className="bg-gray-800 text-white text-xs rounded px-2 py-1.5 border border-gray-600 focus:border-orange-500 focus:outline-none w-full"
                                                 >
+                                                    <option value="master">Admin Master</option>
                                                     <option value="admin">Admin</option>
                                                     <option value="manager">Manager</option>
                                                     <option value="bartender">Bartender</option>

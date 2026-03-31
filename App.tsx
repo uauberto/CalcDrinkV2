@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard.tsx';
 import ApprovalPending from './components/ApprovalPending.tsx';
 import Subscription from './components/Subscription.tsx';
 import MasterDashboard from './components/MasterDashboard.tsx';
+import UpdatePassword from './components/UpdatePassword.tsx';
 import { useLocalStorage } from './hooks/useLocalStorage.ts';
 import { api } from './lib/supabase.ts';
 import { ENABLE_DATABASE, MASTER_EMAIL } from './config.ts';
@@ -135,6 +136,8 @@ const AppLogic: React.FC = () => {
                 )}
            </ProtectedRoute>
        } />
+
+       <Route path="/recovery" element={<UpdatePassword />} />
 
        <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

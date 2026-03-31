@@ -101,6 +101,17 @@ create table if not exists event_staff (
   cost numeric not null
 );
 
+create table if not exists system_settings (
+  id uuid primary key default gen_random_uuid(),
+  monthly_price numeric default 49.90,
+  yearly_price numeric default 39.90,
+  payment_method text default 'pix',
+  pix_key text default '',
+  payment_link_monthly text default '',
+  payment_link_yearly text default '',
+  payment_instructions text default ''
+);
+
 -- Índices
 create index if not exists idx_ingredients_company on ingredients(company_id);
 create index if not exists idx_drinks_company on drinks(company_id);
@@ -117,6 +128,7 @@ alter table drink_ingredients enable row level security;
 alter table events enable row level security;
 alter table event_drinks enable row level security;
 alter table event_staff enable row level security;
+alter table system_settings enable row level security;
 
 -- Limpar policies antigas se existirem
 drop policy if exists "Companies policy" on companies;
@@ -161,6 +173,17 @@ create policy "Event drinks policy" on event_drinks for all using (
 create policy "Event staff policy" on event_staff for all using (
   event_id in (select id from events where company_id in (select id from companies where auth_user_id = auth.uid() or role = 'master'))
 );
+
+drop policy if exists "System settings read" on system_settings;
+drop policy if exists "System settings update" on system_settings;
+
+create policy "System settings read" on system_settings for select using (true);
+create policy "System settings update" on system_settings for update using (
+  exists(select 1 from companies where auth_user_id = auth.uid() and role = 'master')
+);
+
+-- Inserir linha padrao
+insert into system_settings (id) select '00000000-0000-0000-0000-000000000001'::uuid where not exists (select 1 from system_settings);
 
 -- --------------------------------------------------------------------------
 -- 🔄 LIGAÇÕES DE MIGRAÇÃO LAZY (FUNÇÕES NO BANCO)
@@ -560,6 +583,17 @@ export const api = {
           const { error } = await supabase.from('companies').update({ role: role }).eq('id', id);
           if (error) handleDatabaseError(error, 'Admin Update Role');
           return !error;
+      },
+      getSettings: async (): Promise<any> => {
+          const { data } = await supabase.from('system_settings').select('*').limit(1).maybeSingle();
+          if (!data) return null;
+          return { id: data.id, monthlyPrice: data.monthly_price, yearlyPrice: data.yearly_price, paymentMethod: data.payment_method, pixKey: data.pix_key, paymentLinkMonthly: data.payment_link_monthly, paymentLinkYearly: data.payment_link_yearly, paymentInstructions: data.payment_instructions };
+      },
+      updateSettings: async (settings: any): Promise<boolean> => {
+          const payloads = { monthly_price: settings.monthlyPrice, yearly_price: settings.yearlyPrice, payment_method: settings.paymentMethod, pix_key: settings.pixKey, payment_link_monthly: settings.paymentLinkMonthly, payment_link_yearly: settings.paymentLinkYearly, payment_instructions: settings.paymentInstructions };
+          const { error } = await supabase.from('system_settings').update(payloads).eq('id', settings.id);
+          if (error) handleDatabaseError(error, 'Update Settings');
+          return !error;
       }
       // Note: resetUserPassword is removed. Master cannot reset users plaintext password manually anymore via RLS.
       // E-mail password recovery flow from Auth should be used.
@@ -583,3 +617,4 @@ function mapDatabaseToIngredient(db: any): Ingredient {
         id: db.id, name: db.name, unit: db.unit, isAlcoholic: db.is_alcoholic, lowStockThreshold: db.low_stock_threshold, stockEntries: db.stock_entries ? db.stock_entries.map((se: any) => ({ id: se.id, date: se.date, quantity: se.quantity, price: se.price, remainingQuantity: se.remaining_quantity })) : []
     };
 }
+

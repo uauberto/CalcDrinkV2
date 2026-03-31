@@ -78,3 +78,14 @@ export interface Company {
   responsibleName: string; // Nome do responsável ou do próprio PF
   requiresPasswordChange?: boolean;
 }
+
+export interface SystemSettings {
+  id: string; // usually '1'
+  monthlyPrice: number;
+  yearlyPrice: number;
+  paymentMethod: 'pix' | 'link' | 'none';
+  pixKey: string;
+  paymentLinkMonthly: string;
+  paymentLinkYearly: string;
+  paymentInstructions: string;
+}
